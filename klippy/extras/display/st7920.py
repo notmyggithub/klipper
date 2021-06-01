@@ -32,6 +32,30 @@ class DisplayBase:
                  for i in range(32)]
         self.cached_glyphs = {}
         self.icons = {}
+    def build_config(self):
+        self.mcu.add_config_cmd(
+            "config_st7920 oid=%u cs_pin=%s sclk_pin=%s sid_pin=%s"
+            " sync_delay_ticks=%d cmd_delay_ticks=%d" % (
+                self.oid, self.pins[0], self.pins[1], self.pins[2],
+                self.mcu.seconds_to_clock(ST7920_SYNC_DELAY),
+                self.mcu.seconds_to_clock(ST7920_CMD_DELAY)))
+        cmd_queue = self.mcu.alloc_command_queue()
+        self.send_cmds_cmd = self.mcu.lookup_command(
+            "st7920_send_cmds oid=%c cmds=%*s", cq=cmd_queue)
+        self.send_data_cmd = self.mcu.lookup_command(
+            "st7920_send_data oid=%c data=%*s", cq=cmd_queue)
+    def send(self, cmds, is_data=False, is_extended=False):
+        cmd_type = self.send_cmds_cmd
+        if is_data:
+            cmd_type = self.send_data_cmd
+        elif self.is_extended != is_extended:
+            add_cmd = 0x22
+            if is_extended:
+                add_cmd = 0x26
+            cmds = [add_cmd] + cmds
+            self.is_extended = is_extended
+        cmd_type.send([self.oid, cmds], reqclock=BACKGROUND_PRIORITY_CLOCK)
+        logging.debug("st7920 %d %s", is_data, repr(cmds))
     def flush(self):
         # Find all differences in the framebuffers and send them to the chip
         for new_data, old_data, fb_id in self.all_framebuffers:
